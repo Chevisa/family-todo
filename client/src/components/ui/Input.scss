@@ -1,0 +1,35 @@
+@use '../../styles/variables' as *;
+
+.input {
+  width: 100%;
+  background: #f3f3f3;
+  border: none;
+  border-bottom: 2px solid #ccc;
+  border-radius: 0;
+  padding: 0.75rem 1rem 0.25rem 1rem;
+  font-family: $font-family-base;
+  font-size: 2rem;
+  color: $color-text-primary;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+
+  &::placeholder {
+    color: #9b9b9b;
+    opacity: 1;
+    font-style: italic;
+  }
+
+  &:focus {
+    outline: none;
+    background: #ededed;
+  }
+
+  &:disabled {
+    background: #f3f3f3;
+    color: #bcbcbc;
+    cursor: not-allowed;
+    border-bottom-color: #e0e0e0;
+    opacity: 0.6;
+  }
+}

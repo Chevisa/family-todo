@@ -1,0 +1,90 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy frontend and backend to VPS
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Build frontend
+        working-directory: client
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
+          echo "VITE_API_URL=/api/v1" > .env.production
+          npm run build
+
+      - name: Prepare app directory on VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            APP_DIR="/var/www/family-todo-list"
+            sudo mkdir -p "$APP_DIR/server" "$APP_DIR/deploy" "$APP_DIR/client/dist"
+            sudo chown -R $USER:$USER "$APP_DIR"
+
+      - name: Upload backend, deploy files and frontend build
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          source: "server,deploy,client/dist"
+          target: "/var/www/family-todo-list"
+          overwrite: true
+
+      - name: Create environment and restart services
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT }}
+          script: |
+            set -e
+            APP_DIR="/var/www/family-todo-list"
+            cd "$APP_DIR"
+
+            cat > server/.env <<EOF_ENV
+            APP_NAME=Family ToDo List API
+            APP_ENV=production
+            SECRET_KEY=${{ secrets.SECRET_KEY }}
+            ACCESS_TOKEN_EXPIRE_MINUTES=60
+            REFRESH_TOKEN_EXPIRE_DAYS=7
+            DATABASE_URL=postgresql+psycopg2://postgres:${{ secrets.POSTGRES_PASSWORD }}@db:5432/family_todo
+            CORS_ORIGINS=${{ secrets.CORS_ORIGINS }}
+            EOF_ENV
+
+            export POSTGRES_PASSWORD="${{ secrets.POSTGRES_PASSWORD }}"
+
+            docker compose -f deploy/docker-compose.prod.yml up -d --build
+
+            sudo cp deploy/nginx.conf /etc/nginx/sites-available/family-todo
+            sudo ln -sf /etc/nginx/sites-available/family-todo /etc/nginx/sites-enabled/family-todo
+            sudo nginx -t
+            sudo systemctl reload nginx
+
+            docker ps

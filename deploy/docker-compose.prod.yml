@@ -1,0 +1,43 @@
+services:
+  db:
+    image: postgres:16
+    container_name: family_todo_db
+    restart: always
+    environment:
+      POSTGRES_DB: family_todo
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - family_todo_pgdata:/var/lib/postgresql/data
+    networks:
+      - family_todo_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d family_todo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ../server
+      dockerfile: Dockerfile
+    container_name: family_todo_api
+    restart: always
+    env_file:
+      - ../server/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      # Backend открыт только внутри VPS на 127.0.0.1.
+      # Наружу его отдаёт Nginx через /api/v1, /docs и /openapi.json.
+      - "127.0.0.1:8000:8000"
+    networks:
+      - family_todo_net
+
+volumes:
+  family_todo_pgdata:
+
+networks:
+  family_todo_net:
+    driver: bridge
